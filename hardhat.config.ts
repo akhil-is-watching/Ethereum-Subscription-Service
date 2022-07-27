@@ -14,16 +14,10 @@ const config: HardhatUserConfig = {
     },
 
     mumbai:{
-      url: "https://polygon-mumbai.g.alchemy.com/v2/wDIt_c5Zl3Gn4wIugQgP-lXCb9Lb_VMZ",
+      url: process.env.MUMBAI_RPC_URL,
       chainId: 80001,
-      accounts:["c965cd0f8776a46fa0ef9c47af6ebd3659ba02dfc26eec45653378c367fb5b94"]
+      accounts:[process.env.DEPLOY_PRIVATE_KEY || '']
     },
-
-    sepolia:{
-      url: "https://rpc.sepolia.org",
-      chainId: 11155111,
-      accounts:["c965cd0f8776a46fa0ef9c47af6ebd3659ba02dfc26eec45653378c367fb5b94"]
-    }
   },
   etherscan: {
     apiKey: process.env.ETHERSCAN_API_KEY
