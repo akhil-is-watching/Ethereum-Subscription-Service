@@ -1,13 +1,9 @@
-# Sample Hardhat Project
+# Ethereum-Subscription-Service
+A blockchain protocol built for supporting subscription models as a payment service.
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a script that deploys that contract.
 
-Try running some of the following tasks:
 
-```shell
-npx hardhat help
-npx hardhat test
-GAS_REPORT=true npx hardhat test
-npx hardhat node
-npx hardhat run scripts/deploy.ts
-```
+#Networks
+
+##MUMBAI
+ - deployed address: https://mumbai.polygonscan.com/address/0x9830626B891575e454FE381105d68ab73f2DCEdB#code

@@ -4,8 +4,9 @@ pragma solidity ^0.8.9;
 import "@openzeppelin/contracts/interfaces/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract EVMsub {
+contract EVMsub is Ownable{
 
     using SafeERC20 for IERC20;
     using SafeMath for uint256; 
@@ -27,6 +28,10 @@ contract EVMsub {
 
     mapping (bytes32 => Subscription) public subscriptions;
     mapping (address => bytes32[]) public subscribers_Subscriptions;
+    mapping(IERC20 => mapping (address => uint256)) public _payeeBalances;
+    mapping(IERC20 => uint256) public _feeBalances;
+
+    uint PLATFORM_FEE;
 
     // EVENTS (INDEXING)
 
@@ -50,6 +55,22 @@ contract EVMsub {
         bytes32 _subscriptionID,
         address _subscriber
     );
+
+    event SubFeeWithdraw(
+        IERC20 _token,
+        address _payee,
+        uint _amount
+    );
+
+    event OPFeeWithdraw(
+        IERC20 _token,
+        address _payee,
+        uint _amount
+    );
+
+    constructor (uint _platformFee) {
+        PLATFORM_FEE = _platformFee;
+    }
 
     /**
     * @dev Called by the subscriber on their own wallet, using data initiated by the merchant in a checkout flow.
@@ -99,7 +120,10 @@ contract EVMsub {
 
         subscribers_Subscriptions[msg.sender].push(subscriptionID);
 
-        _payToken.safeTransferFrom(msg.sender, _payeeAddress, _amountInitial);
+        _payToken.safeTransferFrom(subscription.owner, address(this), subscription.amountRecurring);
+        (uint _fee, uint _amount) = calculateAndDeductFee(subscription.amountRecurring);
+        _payeeBalances[_payToken][subscription.payeeAddress] += _amount;
+        _feeBalances[_payToken] += _fee;
 
         // Emit NewSubscription event
         emit NewSubscription(
@@ -179,33 +203,65 @@ contract EVMsub {
     /**
     * @dev Called by or on behalf of the merchant, in order to initiate a payment.
     * @param _subscriptionID The subscription ID to process payments for
-    * @param _amount Amount to be transferred, can be lower than total allowable amount
     * @return A boolean to indicate whether the payment was successful
     */
     function renewSubscription(
-        bytes32 _subscriptionID,
-        uint _amount
+        bytes32 _subscriptionID
         )
         public
         returns (bool)
     {
         Subscription storage subscription = subscriptions[_subscriptionID];
 
-        require((_amount <= subscription.amountRecurring),
-            "REQ AMOUNT HIGHER THAN ALLOWED");
-
         require((paymentDue(_subscriptionID)),
             "PAYMENT NOT DUE");
 
         IERC20 payToken = subscription.payToken;
 
-        payToken.safeTransferFrom(subscription.owner, subscription.payeeAddress, _amount);
-
+        payToken.safeTransferFrom(subscription.owner, address(this), subscription.amountRecurring);
+        (uint _fee, uint _amount) = calculateAndDeductFee(subscription.amountRecurring);
+        _payeeBalances[payToken][subscription.payeeAddress] += _amount;
+        _feeBalances[payToken] += _fee;
         // Increment subscription nextPaymentTime by one interval
         subscription.nextPaymentTime = subscription.nextPaymentTime.add(subscription.periodMultiplier);
         
-        emit RenewedSubscription(_subscriptionID, msg.sender, _amount);
+        emit RenewedSubscription(_subscriptionID, msg.sender, subscription.amountRecurring);
         return true;
     }
 
+    function calculateAndDeductFee(uint256 _amount) public view returns(uint256, uint256) {
+        uint _fee = _amount.mul(PLATFORM_FEE).div(10000);
+        uint _withdrawAmount = _amount.sub(_fee);
+        return(_withdrawAmount,_fee);
+    }
+
+    function getSubFeeEarned(IERC20 _token, address _payee) public view returns(uint) {
+        return _payeeBalances[_token][_payee];
+    }
+
+    function withdrawSubFee(IERC20 _token, uint _amount) public{
+
+        require(
+            _amount <= _payeeBalances[_token][msg.sender],
+            "EXCEEDS SUB BALANCES"
+        );
+
+        _payeeBalances[_token][msg.sender] -= _amount;
+        _token.safeTransfer(msg.sender, _amount);
+
+        emit SubFeeWithdraw(_token, msg.sender, _amount);
+    }
+
+    function withdrawOPFee(IERC20 _token, uint _amount) public onlyOwner{
+
+        require(
+            _amount <= _feeBalances[_token],
+            "EXCEEDS FEE BALANCES"
+        );
+
+        _feeBalances[_token] -= _amount;
+        _token.safeTransfer(msg.sender, _amount);
+
+        emit OPFeeWithdraw(_token, msg.sender, _amount);
+    }
 }
